@@ -7,14 +7,14 @@ import { useSpeech } from '@/hooks/useSpeech'
 interface WordCardNewProps {
   word: Word
   onSwipeUp: () => void      // Mantener frecuencia — muestra significado 3s
-  onSwipeRight: () => void   // Degradar frecuencia + avanzar
-  onNext: () => void         // Avanzar (llamado por el componente después de 3s)
+  onSwipeRight: () => void   // Degradar frecuencia + avanzar (ahora disparo con swipe LEFT)
+  onNext: () => void
   onExit?: () => void
   index?: number
   total?: number
 }
 
-type CardState = 'idle' | 'flipping' | 'showing' | 'sliding-right' | 'advancing'
+type CardState = 'idle' | 'flipping' | 'showing' | 'sliding-left' | 'advancing'
 
 const PRIORITY_LABEL: Record<string, string> = { normal: 'Normal', frequent: 'Frecuente', always: 'Siempre' }
 const PRIORITY_COLOR: Record<string, string>  = { normal: 'text-gray-400', frequent: 'text-blue-400', always: 'text-purple-400' }
@@ -39,22 +39,34 @@ export const WordCardNew = ({
   const isDragging    = useRef(false)
   const audioUrlRef   = useRef<string | null>(null)
 
-  // Fetch MP3 and play immediately when card appears
+  // Fetch MP3 and play when card appears. AbortController cancels if word changes fast.
   useEffect(() => {
     audioUrlRef.current = null
-    fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.english)}`)
+    let mounted = true
+    const controller = new AbortController()
+
+    fetch(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.english)}`,
+      { signal: controller.signal }
+    )
       .then(r => r.json())
       .then(data => {
+        if (!mounted) return
         const phonetics = data?.[0]?.phonetics ?? []
         const audio = phonetics.find((p: { audio?: string }) => p.audio)?.audio
         if (audio) {
           audioUrlRef.current = audio
-          new Audio(audio).play().catch(() => speak(word.english, 'en-US'))
+          new Audio(audio).play().catch(() => { if (mounted) speak(word.english, 'en-US') })
         } else {
           speak(word.english, 'en-US')
         }
       })
-      .catch(() => speak(word.english, 'en-US'))
+      .catch(() => { if (mounted) speak(word.english, 'en-US') })
+
+    return () => {
+      mounted = false
+      controller.abort()
+    }
   }, [word.english, speak])
 
   useEffect(() => () => {
@@ -73,10 +85,10 @@ export const WordCardNew = ({
     advTimerRef.current  = setTimeout(() => { setState('advancing'); onNext() }, 3600)
   }, [state, onSwipeUp, onNext])
 
-  // ── Swipe Right: degradar frecuencia, salir ──
-  const triggerSwipeRight = useCallback(() => {
+  // ── Swipe Left: degradar frecuencia, salir ──
+  const triggerSwipeLeft = useCallback(() => {
     if (state !== 'idle') return
-    setState('sliding-right')
+    setState('sliding-left')
     slideTimerRef.current = setTimeout(() => onSwipeRight(), 350)
   }, [state, onSwipeRight])
 
@@ -92,13 +104,13 @@ export const WordCardNew = ({
   // ── Teclado ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp')    triggerSwipeUp()
-      if (e.key === 'ArrowRight') triggerSwipeRight()
+      if (e.key === 'ArrowUp')   triggerSwipeUp()
+      if (e.key === 'ArrowLeft') triggerSwipeLeft()
       if (e.key === 'Enter' || e.key === ' ') handleSkip()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [triggerSwipeUp, triggerSwipeRight, handleSkip])
+  }, [triggerSwipeUp, triggerSwipeLeft, handleSkip])
 
   // ── Touch ──
   const onTouchStart = (e: React.TouchEvent) => {
@@ -109,11 +121,12 @@ export const WordCardNew = ({
     const dx = e.changedTouches[0].clientX - touchStart.current.x
     const dy = e.changedTouches[0].clientY - touchStart.current.y
     touchStart.current = null
-    const swipeUp = Math.abs(dy) > 40 && dy < 0 && Math.abs(dy) > Math.abs(dx)
+    const swipeUp   = Math.abs(dy) > 40 && dy < 0 && Math.abs(dy) > Math.abs(dx)
+    const swipeLeft = Math.abs(dx) > 40 && dx < 0 && Math.abs(dx) > Math.abs(dy)
     if (state === 'showing' && swipeUp) { handleSkip(); return }
     if (state !== 'idle') return
-    if (swipeUp) triggerSwipeUp()
-    else if (Math.abs(dx) > 40 && dx > 0 && Math.abs(dx) > Math.abs(dy)) triggerSwipeRight()
+    if (swipeUp)        triggerSwipeUp()
+    else if (swipeLeft) triggerSwipeLeft()
   }
 
   // ── Mouse drag (desktop) ──
@@ -132,11 +145,12 @@ export const WordCardNew = ({
     const dx = e.clientX - mouseStart.current.x
     const dy = e.clientY - mouseStart.current.y
     mouseStart.current = null; isDragging.current = false
-    const swipeUp = Math.abs(dy) > 30 && dy < 0 && Math.abs(dy) > Math.abs(dx)
+    const swipeUp   = Math.abs(dy) > 30 && dy < 0 && Math.abs(dy) > Math.abs(dx)
+    const swipeLeft = Math.abs(dx) > 30 && dx < 0 && Math.abs(dx) > Math.abs(dy)
     if (state === 'showing' && swipeUp) { handleSkip(); return }
     if (state !== 'idle') return
-    if (swipeUp) triggerSwipeUp()
-    else if (Math.abs(dx) > 30 && dx > 0 && Math.abs(dx) > Math.abs(dy)) triggerSwipeRight()
+    if (swipeUp)        triggerSwipeUp()
+    else if (swipeLeft) triggerSwipeLeft()
   }
 
   return (
@@ -173,13 +187,13 @@ export const WordCardNew = ({
             className="relative w-full h-full"
             style={{
               transformStyle: 'preserve-3d',
-              transform: state === 'sliding-right'
-                ? 'translateX(130%) rotate(12deg)'
+              transform: state === 'sliding-left'
+                ? 'translateX(-130%) rotate(-12deg)'
                 : isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-              transition: state === 'sliding-right'
+              transition: state === 'sliding-left'
                 ? 'transform 350ms ease-in, opacity 350ms'
                 : 'transform 600ms cubic-bezier(0.4, 0.2, 0.2, 1)',
-              opacity: state === 'sliding-right' ? 0 : 1,
+              opacity: state === 'sliding-left' ? 0 : 1,
             }}
           >
             {/* Frente */}
@@ -209,10 +223,10 @@ export const WordCardNew = ({
         {/* Instrucciones — solo en idle */}
         {state === 'idle' && (
           <div className="flex items-center justify-between px-4 animate-fadeIn">
-            {/* Swipe right */}
+            {/* Swipe left */}
             <div className="flex flex-col items-center gap-1 text-center">
               <div className="w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
-                <span className="text-white/50 text-lg">→</span>
+                <span className="text-white/50 text-lg">←</span>
               </div>
               <span className="text-white/35 text-xs leading-tight">Ya lo sé<br/>baja frecuencia</span>
             </div>
