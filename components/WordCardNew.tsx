@@ -37,6 +37,20 @@ export const WordCardNew = ({
   const touchStart    = useRef<{ x: number; y: number } | null>(null)
   const mouseStart    = useRef<{ x: number; y: number } | null>(null)
   const isDragging    = useRef(false)
+  const audioUrlRef   = useRef<string | null>(null)
+
+  // Pre-fetch MP3 pronunciation from Free Dictionary API (works in iOS PWA)
+  useEffect(() => {
+    audioUrlRef.current = null
+    fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.english)}`)
+      .then(r => r.json())
+      .then(data => {
+        const phonetics = data?.[0]?.phonetics ?? []
+        const audio = phonetics.find((p: { audio?: string }) => p.audio)?.audio
+        if (audio) audioUrlRef.current = audio
+      })
+      .catch(() => {})
+  }, [word.english])
 
   useEffect(() => () => {
     if (flipTimerRef.current)  clearTimeout(flipTimerRef.current)
@@ -44,16 +58,24 @@ export const WordCardNew = ({
     if (slideTimerRef.current) clearTimeout(slideTimerRef.current)
   }, [])
 
+  const playAudio = useCallback(() => {
+    if (audioUrlRef.current) {
+      new Audio(audioUrlRef.current).play().catch(() => speak(word.english, 'en-US'))
+    } else {
+      speak(word.english, 'en-US')
+    }
+  }, [speak, word.english])
+
   // ── Swipe Up: mantener frecuencia, ver significado 3s ──
   const triggerSwipeUp = useCallback(() => {
     if (state !== 'idle') return
     onSwipeUp()
-    speak(word.english, 'en-US')
+    playAudio()
     setState('flipping')
     setIsFlipped(true)
     flipTimerRef.current = setTimeout(() => setState('showing'), 600)
     advTimerRef.current  = setTimeout(() => { setState('advancing'); onNext() }, 3600)
-  }, [state, onSwipeUp, onNext, speak, word.english])
+  }, [state, onSwipeUp, onNext, playAudio])
 
   // ── Swipe Right: degradar frecuencia, salir ──
   const triggerSwipeRight = useCallback(() => {
