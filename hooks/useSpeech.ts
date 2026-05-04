@@ -1,16 +1,36 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export const useSpeech = () => {
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const unlockedRef = useRef(false)
+
+  // iOS Safari PWA requires speechSynthesis to be triggered from a direct
+  // user gesture. We unlock it on the very first touch so later calls work.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+
+    const unlock = () => {
+      if (unlockedRef.current) return
+      unlockedRef.current = true
+      const utterance = new SpeechSynthesisUtterance('')
+      utterance.volume = 0
+      window.speechSynthesis.speak(utterance)
+    }
+
+    window.addEventListener('touchstart', unlock, { once: true })
+    window.addEventListener('click', unlock, { once: true })
+    return () => {
+      window.removeEventListener('touchstart', unlock)
+      window.removeEventListener('click', unlock)
+    }
+  }, [])
 
   const speak = useCallback((text: string, lang = 'en-US') => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
 
     const synth = window.speechSynthesis
-
-    // Cancel any ongoing speech
     synth.cancel()
 
     const utterance = new SpeechSynthesisUtterance(text)
@@ -32,15 +52,10 @@ export const useSpeech = () => {
     setIsSpeaking(false)
   }, [])
 
-  const isSupportedInBrowser = (): boolean => {
-    if (typeof window === 'undefined') return false
-    return 'speechSynthesis' in window
-  }
-
   return {
     speak,
     cancel,
     isSpeaking,
-    isSupported: isSupportedInBrowser(),
+    isSupported: typeof window !== 'undefined' && 'speechSynthesis' in window,
   }
 }
