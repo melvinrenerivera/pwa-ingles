@@ -64,25 +64,12 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   getShuffledWords: (priority?: Priority) => {
-    const words = get().getFilteredWords(priority)
-    // Weight words by priority: normal=1x, frequent=3x, always=5x
-    const weights: Record<Priority, number> = {
-      'normal': 1,
-      'frequent': 3,
-      'always': 5,
-    }
-    const weighted: Word[] = []
-    words.forEach(word => {
-      const count = weights[word.priority]
-      for (let i = 0; i < count; i++) {
-        weighted.push(word)
-      }
-    })
-    // Fisher-Yates shuffle
-    for (let i = weighted.length - 1; i > 0; i--) {
+    const words = [...get().getFilteredWords(priority)]
+    // Fisher-Yates shuffle — each word appears exactly once per session
+    for (let i = words.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [weighted[i], weighted[j]] = [weighted[j], weighted[i]]
+      [words[i], words[j]] = [words[j], words[i]]
     }
-    return weighted
+    return words
   },
 }))
