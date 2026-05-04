@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Navigation } from '@/components/Navigation'
+import { AudioUnlock } from '@/components/AudioUnlock'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className="bg-slate-900">
+        <AudioUnlock />
         <main className="pb-24">
           {children}
         </main>

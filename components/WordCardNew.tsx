@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Word } from '@/types'
 import { useSpeech } from '@/hooks/useSpeech'
+import { fetchDictionaryAudioUrl, fetchAndDecodeAudio, playAudioBuffer } from '@/lib/audioPlayer'
 
 interface WordCardNewProps {
   word: Word
@@ -37,31 +38,28 @@ export const WordCardNew = ({
   const touchStart    = useRef<{ x: number; y: number } | null>(null)
   const mouseStart    = useRef<{ x: number; y: number } | null>(null)
   const isDragging    = useRef(false)
-  const audioUrlRef   = useRef<string | null>(null)
+  const audioBufferRef = useRef<AudioBuffer | null>(null)
 
-  // Fetch MP3 and play when card appears. AbortController cancels if word changes fast.
+  // Fetch + decode audio via AudioContext (works on iOS PWA after first unlock)
   useEffect(() => {
-    audioUrlRef.current = null
+    audioBufferRef.current = null
     let mounted = true
     const controller = new AbortController()
 
-    fetch(
-      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.english)}`,
-      { signal: controller.signal }
-    )
-      .then(r => r.json())
-      .then(data => {
+    ;(async () => {
+      const url = await fetchDictionaryAudioUrl(word.english, controller.signal)
+      if (!mounted) return
+      if (url) {
+        const buffer = await fetchAndDecodeAudio(url)
         if (!mounted) return
-        const phonetics = data?.[0]?.phonetics ?? []
-        const audio = phonetics.find((p: { audio?: string }) => p.audio)?.audio
-        if (audio) {
-          audioUrlRef.current = audio
-          new Audio(audio).play().catch(() => { if (mounted) speak(word.english, 'en-US') })
-        } else {
-          speak(word.english, 'en-US')
+        if (buffer) {
+          audioBufferRef.current = buffer
+          playAudioBuffer(buffer)
+          return
         }
-      })
-      .catch(() => { if (mounted) speak(word.english, 'en-US') })
+      }
+      if (mounted) speak(word.english, 'en-US')
+    })()
 
     return () => {
       mounted = false
