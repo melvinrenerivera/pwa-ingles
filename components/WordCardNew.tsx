@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Word } from '@/types'
+import { useSpeech } from '@/hooks/useSpeech'
 
 interface WordCardNewProps {
   word: Word
@@ -27,6 +28,7 @@ export const WordCardNew = ({
   index = 0,
   total = 0,
 }: WordCardNewProps) => {
+  const { speak } = useSpeech()
   const [state, setState] = useState<CardState>('idle')
   const [isFlipped, setIsFlipped] = useState(false)
   const flipTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -46,11 +48,12 @@ export const WordCardNew = ({
   const triggerSwipeUp = useCallback(() => {
     if (state !== 'idle') return
     onSwipeUp()
+    speak(word.english, 'en-US')
     setState('flipping')
     setIsFlipped(true)
     flipTimerRef.current = setTimeout(() => setState('showing'), 600)
     advTimerRef.current  = setTimeout(() => { setState('advancing'); onNext() }, 3600)
-  }, [state, onSwipeUp, onNext])
+  }, [state, onSwipeUp, onNext, speak, word.english])
 
   // ── Swipe Right: degradar frecuencia, salir ──
   const triggerSwipeRight = useCallback(() => {
@@ -173,7 +176,7 @@ export const WordCardNew = ({
 
             {/* Atrás — doble tap para saltar */}
             <div
-              className="absolute w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl shadow-2xl flex flex-col items-center justify-center p-6 cursor-pointer"
+              className="absolute w-full h-full bg-gradient-to-br from-emerald-400 to-green-500 rounded-3xl shadow-2xl flex flex-col items-center justify-center p-6 cursor-pointer"
               style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
               onDoubleClick={handleSkip}
             >
