@@ -39,7 +39,7 @@ export const WordCardNew = ({
   const isDragging    = useRef(false)
   const audioUrlRef   = useRef<string | null>(null)
 
-  // Pre-fetch MP3 pronunciation from Free Dictionary API (works in iOS PWA)
+  // Fetch MP3 and play immediately when card appears
   useEffect(() => {
     audioUrlRef.current = null
     fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.english)}`)
@@ -47,10 +47,15 @@ export const WordCardNew = ({
       .then(data => {
         const phonetics = data?.[0]?.phonetics ?? []
         const audio = phonetics.find((p: { audio?: string }) => p.audio)?.audio
-        if (audio) audioUrlRef.current = audio
+        if (audio) {
+          audioUrlRef.current = audio
+          new Audio(audio).play().catch(() => speak(word.english, 'en-US'))
+        } else {
+          speak(word.english, 'en-US')
+        }
       })
-      .catch(() => {})
-  }, [word.english])
+      .catch(() => speak(word.english, 'en-US'))
+  }, [word.english, speak])
 
   useEffect(() => () => {
     if (flipTimerRef.current)  clearTimeout(flipTimerRef.current)
@@ -58,24 +63,15 @@ export const WordCardNew = ({
     if (slideTimerRef.current) clearTimeout(slideTimerRef.current)
   }, [])
 
-  const playAudio = useCallback(() => {
-    if (audioUrlRef.current) {
-      new Audio(audioUrlRef.current).play().catch(() => speak(word.english, 'en-US'))
-    } else {
-      speak(word.english, 'en-US')
-    }
-  }, [speak, word.english])
-
   // ── Swipe Up: mantener frecuencia, ver significado 3s ──
   const triggerSwipeUp = useCallback(() => {
     if (state !== 'idle') return
     onSwipeUp()
-    playAudio()
     setState('flipping')
     setIsFlipped(true)
     flipTimerRef.current = setTimeout(() => setState('showing'), 600)
     advTimerRef.current  = setTimeout(() => { setState('advancing'); onNext() }, 3600)
-  }, [state, onSwipeUp, onNext, playAudio])
+  }, [state, onSwipeUp, onNext])
 
   // ── Swipe Right: degradar frecuencia, salir ──
   const triggerSwipeRight = useCallback(() => {
